@@ -27,7 +27,7 @@ func main() {
 	app := configure()
 
 	go listenTg(app)
-	go listenWeb()
+	go listenWeb(app)
 
 	select {}
 }
@@ -113,7 +113,7 @@ func screen(disNum int) (string, *bytes.Buffer) {
 	return fileName, &buf
 }
 
-func listenWeb() {
+func listenWeb(app *application) {
 	// Обработчик для главной страницы
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		displayNumberStr := r.URL.Query().Get("d")
@@ -129,9 +129,9 @@ func listenWeb() {
 		}
 	})
 
-	// Запуск веб-сервера на порту 8080
-	fmt.Println("Starting web server on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	// Запуск веб-сервера на порту
+	fmt.Printf("Starting web server on %s", app.config.webPort)
+	if err := http.ListenAndServe(":"+app.config.webPort, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
