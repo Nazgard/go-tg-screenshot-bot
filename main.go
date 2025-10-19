@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"image/png"
@@ -11,6 +12,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/umputun/go-flags"
+	"golang.org/x/net/proxy"
+
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/kbinani/screenshot"
 )
@@ -19,14 +23,24 @@ var lastDisplay = 0
 
 // Структура application содержит конфигурацию и Telegram-бота
 type application struct {
-	config struct {
-		token         string // Telegram токен
-		debug         bool   // Режим отладки
-		webPort       string // Порт HTTP-сервера
-		daily         bool   // Делать скриншот в 00:30
-		allowedChatID int64  // Разрешённый chat_id
-	}
-	tgBot *tgbotapi.BotAPI
+	Config *Config
+	tgBot  *tgbotapi.BotAPI
+}
+
+type Config struct {
+	Token         string      `long:"telegram-bot-token" env:"TOKEN" description:"Telegram bot token"`
+	Debug         bool        `long:"debug" env:"DEBUG" description:"Telegram debug mode"`
+	WebPort       string      `long:"addr" env:"ADDR" default:":8080" description:"Web server address"`
+	Daily         bool        `long:"daily" env:"DAILY" description:"Enable daily screenshot at 00:30"`
+	AllowedChatID int64       `long:"allowed-chat-id" env:"ALLOWED_CHAT_ID" required:"true" description:"Allowed Telegram chat ID"`
+	Proxy         ProxyConfig `group:"Proxy" env-namespace:"PROXY"`
+}
+
+type ProxyConfig struct {
+	Enable         bool   `long:"proxy-enable" env:"ENABLE" description:"Proxy toggle"`
+	Socks5Addr     string `long:"proxy-socks5-addr" env:"ADDR" description:"Socks5 proxy address"`
+	Socks5User     string `long:"proxy-socks5-user" env:"USER" description:"Socks5 proxy username"`
+	Socks5Password string `long:"proxy-socks5-password" env:"PASSWORD" description:"Socks5 proxy password"`
 }
 
 func main() {
@@ -43,46 +57,61 @@ func main() {
 	select {} // Блокируем main, чтобы горутины работали
 }
 
-// configure настраивает флаги и инициализирует приложение
+// Configure настраивает флаги и инициализирует приложение
 func configure() *application {
-	// Парсинг флагов командной строки
-	token := flag.String("token", "", "Telegram Bot Token")
-	debug := flag.Bool("debug", false, "Enable debug mode")
-	port := flag.String("port", "8080", "Web server port")
-	daily := flag.Bool("daily", false, "Enable daily screenshot at 00:30")
-	chatID := flag.Int64("chat-id", 0, "Allowed Telegram chat ID")
+	config := &Config{}
+	if _, err := flags.Parse(config); err != nil {
+		log.Fatal(err)
+	}
 	flag.Parse()
 
+	httpClient := configureHttpClient(config)
+
 	// Инициализация Telegram-бота
-	bot, err := tgbotapi.NewBotAPI(*token)
+	bot, err := tgbotapi.NewBotAPIWithClient(config.Token, tgbotapi.APIEndpoint, &httpClient)
 	if err != nil {
 		log.Panicf("Error creating bot: %v", err)
 	}
-	bot.Debug = *debug
+	bot.Debug = config.Debug
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
 	// Возвращаем приложение с конфигурацией
 	return &application{
-		config: struct {
-			token         string
-			debug         bool
-			webPort       string
-			daily         bool
-			allowedChatID int64
-		}{
-			token:         *token,
-			debug:         *debug,
-			webPort:       *port,
-			daily:         *daily,
-			allowedChatID: *chatID,
-		},
-		tgBot: bot,
+		Config: config,
+		tgBot:  bot,
 	}
+}
+
+func configureHttpClient(c *Config) http.Client {
+	if c.Proxy.Enable {
+		var auth proxy.Auth
+		if c.Proxy.Socks5User != "" && c.Proxy.Socks5Password != "" {
+			auth = proxy.Auth{
+				User:     c.Proxy.Socks5User,
+				Password: c.Proxy.Socks5Password,
+			}
+		}
+
+		dealer, err := proxy.SOCKS5("tcp", c.Proxy.Socks5Addr, &auth, proxy.Direct)
+		if err != nil {
+			log.Printf("Can't connect to the proxy: %s", err.Error())
+		}
+
+		dealContext := func(ctx context.Context, network, address string) (net.Conn, error) {
+			return dealer.Dial(network, address)
+		}
+
+		tr := &http.Transport{DialContext: dealContext}
+
+		return http.Client{Transport: tr}
+	}
+
+	return http.Client{}
 }
 
 // isAllowedChatID проверяет, разрешён ли этот chat_id
 func isAllowedChatID(app *application, chatID int64) bool {
-	return chatID == app.config.allowedChatID
+	return chatID == app.Config.AllowedChatID
 }
 
 // listenTg обрабатывает входящие сообщения Telegram
@@ -163,15 +192,15 @@ func listenWeb(app *application) {
 	})
 
 	// Логируем запуск веб-сервера
-	log.Printf("Starting web server on port %s", app.config.webPort)
-	if err := http.ListenAndServe(":"+app.config.webPort, nil); err != nil {
+	log.Printf("Starting web server on port %s", app.Config.WebPort)
+	if err := http.ListenAndServe(app.Config.WebPort, nil); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
 
 // listenDaily отправляет скриншот каждый день в 00:30, если включено
 func listenDaily(app *application) {
-	if !app.config.daily {
+	if !app.Config.Daily {
 		// Логирование, если опция ежедневного скриншота выключена
 		log.Println("Daily screenshot feature is disabled in the config.")
 		return
@@ -195,15 +224,15 @@ func listenDaily(app *application) {
 		<-timer.C
 
 		// Логирование отправки скриншота
-		log.Printf("Sending daily screenshot for chat ID %d", app.config.allowedChatID)
+		log.Printf("Sending daily screenshot for chat ID %d", app.Config.AllowedChatID)
 
 		fileName, buf := screen(lastDisplay)
-		msg := buildPhotoMessage(app.config.allowedChatID, fileName, buf)
+		msg := buildPhotoMessage(app.Config.AllowedChatID, fileName, buf)
 		_, err := app.tgBot.Send(&msg)
 		if err != nil {
 			log.Printf("Failed to send daily screenshot: %v", err)
 		} else {
-			log.Printf("Successfully sent daily screenshot to chat ID %d", app.config.allowedChatID)
+			log.Printf("Successfully sent daily screenshot to chat ID %d", app.Config.AllowedChatID)
 		}
 	}
 }
@@ -248,7 +277,11 @@ func screen(disNum int) (string, *bytes.Buffer) {
 	// Логирование успешного захвата экрана
 	fileName := fmt.Sprintf("%d_%dx%d.png", disNum, bounds.Dx(), bounds.Dy())
 	var buf bytes.Buffer
-	png.Encode(&buf, img)
+	err = png.Encode(&buf, img)
+	if err != nil {
+		log.Printf("Encode failed for screen #%d: %v", disNum, err)
+		return "", nil
+	}
 	log.Printf("Captured screen #%d: %s", disNum, fileName)
 	return fileName, &buf
 }
