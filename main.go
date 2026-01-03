@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"flag"
 	"fmt"
 	"image/png"
@@ -34,6 +35,7 @@ type Config struct {
 	Daily         bool        `long:"daily" env:"DAILY" description:"Enable daily screenshot at 00:30"`
 	AllowedChatID int64       `long:"allowed-chat-id" env:"ALLOWED_CHAT_ID" required:"true" description:"Allowed Telegram chat ID"`
 	Proxy         ProxyConfig `group:"Proxy" env-namespace:"PROXY"`
+	AuthConfig    AuthConfig  `group:"Auth" env-namespace:"AUTH"`
 }
 
 type ProxyConfig struct {
@@ -41,6 +43,12 @@ type ProxyConfig struct {
 	Socks5Addr     string `long:"proxy-socks5-addr" env:"ADDR" description:"Socks5 proxy address"`
 	Socks5User     string `long:"proxy-socks5-user" env:"USER" description:"Socks5 proxy username"`
 	Socks5Password string `long:"proxy-socks5-password" env:"PASSWORD" description:"Socks5 proxy password"`
+}
+
+type AuthConfig struct {
+	Enabled bool   `long:"auth-enable" env:"ENABLE" description:"Enable auth"`
+	User    string `long:"auth-user" env:"USER" description:"User name"`
+	Pass    string `long:"auth-password" env:"PASS" description:"Password name"`
 }
 
 func main() {
@@ -163,7 +171,34 @@ func listenTg(app *application) {
 
 // listenWeb запускает HTTP-сервер и обрабатывает запросы на получение скриншотов
 func listenWeb(app *application) {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+
+	// Middleware для Basic Auth
+	basicAuth := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if !app.Config.AuthConfig.Enabled {
+				// Авторизация выключена, просто продолжаем
+				next(w, r)
+				return
+			}
+			// Получаем логин и пароль из заголовка Authorization
+			user, pass, ok := r.BasicAuth()
+
+			if !ok ||
+				subtle.ConstantTimeCompare([]byte(user), []byte(app.Config.AuthConfig.User)) != 1 ||
+				subtle.ConstantTimeCompare([]byte(pass), []byte(app.Config.AuthConfig.Pass)) != 1 {
+
+				// Если авторизация не прошла — возвращаем 401
+				w.Header().Set("WWW-Authenticate", `Basic realm=Restricted Area, charset="UTF-8"`)
+				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			// Если всё ок — передаём управление следующему обработчику
+			next(w, r)
+		}
+	}
+
+	http.HandleFunc("/", basicAuth(func(w http.ResponseWriter, r *http.Request) {
 		// Извлекаем IP-адрес клиента из заголовка RemoteAddr
 		ipAddress := r.RemoteAddr
 		// Извлекаем IP-адрес без порта, если он есть
@@ -189,7 +224,7 @@ func listenWeb(app *application) {
 		if _, err := w.Write(buf.Bytes()); err != nil {
 			log.Printf("Failed to write image to response: %v", err)
 		}
-	})
+	}))
 
 	// Логируем запуск веб-сервера
 	log.Printf("Starting web server on port %s", app.Config.WebPort)
