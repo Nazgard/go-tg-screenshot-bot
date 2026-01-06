@@ -1,92 +1,107 @@
-# 🖥️ Screenshot Telegram Bot + Web Server
+[![Go](https://img.shields.io/badge/go-%2300ADD8.svg?style=for-the-badge&logo=go&logoColor=white)](https://golang.org)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
+[![GitHub last commit](https://img.shields.io/github/last-commit/nazgard/go-tg-screenshot-bot?style=for-the-badge)](https://github.com/nazgard/go-tg-screenshot-bot)
 
-Программа на **Go**, которая позволяет удалённо получать скриншоты экрана через:
+# 🖥️ Screenshot Bot
 
-- Telegram-бота  
-- HTTP-сервер с опциональной **Basic Authentication**  
-- Автоматическую ежедневную отправку скриншота в 00:30  
+Удалённый доступ к скриншотам экрана через **Telegram-бота**, **веб-сервер** и **ежедневную автоматическую рассылку**.
 
-Поддерживается работа через **SOCKS5-прокси** и подробное логирование всех действий.
+Поддержка нескольких мониторов, SOCKS5-прокси, Basic Auth, graceful shutdown и подробное логирование.
+
+Идеально для домашнего ПК, удалённого рабочего стола или VPS с GUI.
+
+---
+
+## ⚡ Быстрый старт
+
+```bash
+go run main.go \
+  --telegram-bot-token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11" \
+  --allowed-chat-id=123456789
+```
+
+Теперь:
+- Напишите боту любое число (например `0`) → получите скриншот соответствующего дисплея.
+- Откройте в браузере: `http://your-ip:8080/?d=0` → скачаете PNG-скриншот.
+- Используйте команду `/whoami`, чтобы узнать свой chat ID.
 
 ---
 
 ## 🚀 Основные возможности
 
-### 1. Telegram Bot
-
-- Авторизация по токену Telegram.
+### 1. Telegram-бот
+- Авторизация по одному разрешённому `chat_id`.
+- Команда `/whoami` — возвращает ваш chat ID.
+- Отправка числа → скриншот указанного дисплея (0, 1, 2…).
 - Режим отладки (`--debug`).
-- Обработка сообщений:
-  - Отправьте число — бот сделает скриншот указанного дисплея и пришлёт фото.
-  - Команда `/whoami` — возвращает ваш `chat_id`.
-- Доступ ограничен одним разрешённым `chat_id` (попытки от других пользователей игнорируются и логируются).
+- Все действия логируются.
 
-### 2. Веб-сервер с Basic Auth
-
-- Запускается на порту, указанном в `--addr` (по умолчанию `:8080`).
+### 2. Веб-сервер
 - Эндпоинт: `GET /?d=<номер_дисплея>`
-- Возвращает PNG-изображение скриншота.
-- **Опциональная Basic Authentication** — включается флагом `--auth-enable`.
-- Логирует IP-адрес каждого клиента.
+- Возвращает PNG-изображение напрямую.
+- Опциональная **Basic Authentication** (`--auth-enable`).
+- Логирует IP каждого клиента.
 
 **Примеры запросов:**
 
 ```bash
-# Без авторизации (если auth отключена)
+# Без авторизации
 curl "http://localhost:8080/?d=0" -o screen.png
 
-# С Basic Auth (если включена)
-curl -u username:password "http://localhost:8080/?d=0" -o screen.png
+# С Basic Auth
+curl -u admin:supersecret "http://localhost:8080/?d=1" -o screen.png
 ```
 
 ### 3. Ежедневные скриншоты
+- Флаг `--daily` включает отправку скриншота **каждый день в 00:30**.
+- Используется последний запрошенный дисплей.
+- Логируется время следующей отправки и результат.
 
-- При включении `--daily` бот каждый день в **00:30** отправляет скриншот последнего использованного дисплея в разрешённый чат.
-- Логируется время следующей отправки и результат выполнения.
-
-### 4. SOCKS5 Proxy
-
-Поддержка прокси для всех исходящих соединений Telegram API (удобно при работе через Tor или корпоративный прокси).
+### 4. SOCKS5-прокси
+Полная поддержка прокси для всех исходящих запросов Telegram API (Tor, корпоративный прокси и т.д.).
 
 ---
 
 ## ⚙️ Конфигурация
 
-Программа использует **флаги командной строки** и **переменные окружения**.
+| Параметр                     | Env переменная       | Обязательный? | По умолчанию | Описание                                      |
+|------------------------------|----------------------|---------------|--------------|-----------------------------------------------|
+| `--telegram-bot-token`       | `TOKEN`              | Да            | —            | Токен Telegram-бота                           |
+| `--allowed-chat-id`          | `ALLOWED_CHAT_ID`    | Да            | —            | Разрешённый chat ID                           |
+| `--addr`                     | `ADDR`               | Нет           | `:8080`      | Адрес и порт веб-сервера                      |
+| `--daily`                    | `DAILY`              | Нет           | `false`      | Ежедневный скриншот в 00:30                    |
+| `--debug`                    | `DEBUG`              | Нет           | `false`      | Режим отладки Telegram API                    |
+| `--auth-enable`              | `AUTH_ENABLE`        | Нет           | `false`      | Включить Basic Auth для веб-сервера           |
+| `--auth-user`                | `AUTH_USER`          | Нет*          | —            | Логин Basic Auth                              |
+| `--auth-password`            | `AUTH_PASS`          | Нет*          | —            | Пароль Basic Auth                             |
+| `--proxy-enable`             | `PROXY_ENABLE`       | Нет           | `false`      | Включить SOCKS5-прокси                        |
+| `--proxy-socks5-addr`        | `PROXY_ADDR`         | Нет*          | —            | Адрес прокси (например, `127.0.0.1:9050`)      |
+| `--proxy-socks5-user`        | `PROXY_USER`         | Нет           | —            | Логин прокси (опционально)                    |
+| `--proxy-socks5-password`    | `PROXY_PASSWORD`     | Нет           | —            | Пароль прокси (опционально)                   |
 
-| Параметр                     | Env                     | Описание                                      | По умолчанию    |
-|------------------------------|-------------------------|-----------------------------------------------|-----------------|
-| `--telegram-bot-token`       | `TOKEN`                 | Токен Telegram бота                           | — (обязательный)|
-| `--debug`                    | `DEBUG`                 | Режим отладки Telegram                        | `false`         |
-| `--addr`                     | `ADDR`                  | Адрес веб-сервера                             | `:8080`         |
-| `--daily`                    | `DAILY`                 | Включить ежедневный скриншот в 00:30           | `false`         |
-| `--allowed-chat-id`          | `ALLOWED_CHAT_ID`       | Разрешённый Telegram chat ID                   | — (обязательный)|
-| `--auth-enable`              | `AUTH_ENABLE`           | Включить Basic Auth для веб-сервера           | `false`         |
-| `--auth-user`                | `AUTH_USER`             | Логин для Basic Auth                          | —               |
-| `--auth-password`            | `AUTH_PASS`             | Пароль для Basic Auth                         | —               |
-| `--proxy-enable`             | `PROXY_ENABLE`          | Включить SOCKS5-прокси                        | `false`         |
-| `--proxy-socks5-addr`        | `PROXY_ADDR`            | Адрес прокси (например, `127.0.0.1:9050`)      | —               |
-| `--proxy-socks5-user`        | `PROXY_USER`            | Логин прокси (опционально)                    | —               |
-| `--proxy-socks5-password`    | `PROXY_PASSWORD`        | Пароль прокси (опционально)                   | —               |
+_* Обязательны только при включении соответствующей функции._
 
 ---
 
 ## 🧰 Примеры запуска
 
-### Базовый запуск
-
+### Минимальный
 ```bash
-go run main.go \
+./go-tg-screenshot-bot --telegram-bot-token="YOUR_TOKEN" --allowed-chat-id=123456789
+```
+
+### С ежедневной отправкой и веб-сервером на другом порту
+```bash
+./go-tg-screenshot-bot \
   --telegram-bot-token="YOUR_TOKEN" \
   --allowed-chat-id=123456789 \
   --daily \
   --addr=":9090"
 ```
 
-### С Basic Authentication
-
+### С Basic Auth
 ```bash
-go run main.go \
+./go-tg-screenshot-bot \
   --telegram-bot-token="YOUR_TOKEN" \
   --allowed-chat-id=123456789 \
   --auth-enable \
@@ -94,75 +109,66 @@ go run main.go \
   --auth-password="supersecret123"
 ```
 
-Запрос с авторизацией:
+### Через Tor (SOCKS5)
 ```bash
-curl -u admin:supersecret123 "http://localhost:8080/?d=0" -o screen.png
-```
-
-### Через SOCKS5-прокси (например, Tor)
-
-```bash
-go run main.go \
+./go-tg-screenshot-bot \
   --telegram-bot-token="YOUR_TOKEN" \
   --allowed-chat-id=123456789 \
-  --proxy-enable \
-  --proxy-socks5-addr="127.0.0.1:9050"
-```
-
-### Полный набор опций
-
-```bash
-go run main.go \
-  --telegram-bot-token="YOUR_TOKEN" \
-  --allowed-chat-id=123456789 \
-  --daily \
-  --auth-enable \
-  --auth-user="user" \
-  --auth-password="pass" \
   --proxy-enable \
   --proxy-socks5-addr="127.0.0.1:9050"
 ```
 
 ---
 
-## 🧱 Установка и сборка
+## 🧱 Сборка и установка
 
 ```bash
-# Подготовка зависимостей
+# Клонирование и зависимости
+git clone https://github.com/nazgard/go-tg-screenshot-bot.git
+cd go-tg-screenshot-bot
 go mod tidy
 
-# Сборка бинарника
-go build -o screenshot-bot main.go
+# Сборка
+go build -o go-tg-screenshot-bot main.go
 
 # Запуск
-./screenshot-bot --telegram-bot-token="YOUR_TOKEN" --allowed-chat-id=123456789
+./go-tg-screenshot-bot --telegram-bot-token="YOUR_TOKEN" --allowed-chat-id=123456789
 ```
+
+---
+
+## ⚠️ Совместимость
+
+- **Linux**: Требуется X11 (GNOME, KDE, XFCE, i3 и т.д.). Работает на большинстве дистрибутивов.
+- **Windows**: Полная поддержка всех мониторов.
+- **macOS**: Только основной дисплей (требуется разрешение на запись экрана).
+
+> На headless-серверах без GUI программа **не работает**.
 
 ---
 
 ## 🔒 Безопасность
 
-- **Telegram**: доступ только с одного разрешённого `chat_id`.
-- **Веб-сервер**: опциональная **Basic Authentication**. Рекомендуется включать в продакшене.
-- Все веб-запросы логируют IP-адрес клиента.
-- Для повышенной безопасности:
-    - Ограничьте доступ к порту через фаервол.
-    - Используйте reverse-прокси (nginx/Caddy) с HTTPS.
+- Telegram: доступ только с одного разрешённого `chat_id`.
+- Веб: опциональная Basic Auth + логирование IP.
+- Рекомендации для продакшена:
     - Всегда включайте `--auth-enable`.
-
-> **Важно**: Basic Auth передаёт данные в Base64 (не шифруется). В открытой сети обязательно используйте HTTPS!
+    - Ограничьте доступ к порту фаерволом (ufw/iptables).
+    - Используйте reverse-прокси (nginx, Caddy, Traefik) с HTTPS.
+    - **Basic Auth не шифрует данные** — без HTTPS credentials передаются в открытом виде.
 
 ---
 
 ## 🪵 Пример логов
 
 ```
-2026/01/03 10:00:00 Authorized on account MyScreenshotBot
-2026/01/03 10:00:00 Daily screenshot feature is enabled...
-2026/01/03 10:05:12 Received message from chat ID 123456789: 0
-2026/01/03 10:05:13 Captured screen #0: 0_1920x1080.png
-2026/01/03 10:10:22 Received screenshot request from IP address: 192.168.1.100
-2026/01/03 10:10:23 Captured screen #1: 1_2560x1440.png
+2026/01/06 12:00:00 Authorized on account MyScreenshotBot
+2026/01/06 12:00:00 Starting web server on :8080
+2026/01/06 12:00:00 Daily screenshot enabled — sending at 00:30 every day.
+2026/01/06 12:05:12 Received message from chat ID 123456789: 0
+2026/01/06 12:05:13 Captured screen #0: 0_1920x1080.png
+2026/01/06 12:10:22 Received screenshot request from IP: 192.168.1.100
+2026/01/06 12:10:23 Captured screen #1: 1_2560x1440.png
 ```
 
 ---
@@ -176,4 +182,17 @@ go build -o screenshot-bot main.go
 
 ---
 
-Программа предназначена для запуска на машинах с графическим интерфейсом (домашний ПК, VPS с X11/VNC и т.д.).
+## 📄 OpenAPI (Swagger)
+
+API документирован с помощью OpenAPI 3.0.
+
+- Файл спецификации: [`openapi.yaml`](swagger.yaml)
+- Онлайн-просмотр:
+    - [Swagger Editor](https://editor.swagger.io/?url=https://raw.githubusercontent.com/nazgard/go-tg-screenshot-bot/main/swagger.yaml)
+    - [Redoc](https://redocly.github.io/redoc/?url=https://raw.githubusercontent.com/nazgard/go-tg-screenshot-bot/main/swagger.yaml)
+
+---
+
+**Лицензия:** MIT  
+**Автор:** nazgard  
+**Приятного использования!** 🚀

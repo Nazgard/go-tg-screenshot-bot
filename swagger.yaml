@@ -1,0 +1,101 @@
+openapi: 3.0.3
+info:
+  title: Screenshot Bot API
+  description: |
+    Простой API для получения скриншотов экрана по номеру дисплея.
+    
+    Используется в связке с Telegram-ботом и ежедневной рассылкой.
+    Поддерживает несколько мониторов и опциональную Basic Authentication.
+  version: 1.0.0
+  contact:
+    name: Ваш ник / репозиторий
+    url: https://github.com/yourusername/screenshot-bot
+
+servers:
+  - url: http://localhost:8080
+    description: Локальный сервер (по умолчанию)
+  - url: https://your-domain.com
+    description: Продакшен-сервер (замените на свой домен)
+
+paths:
+  /:
+    get:
+      summary: Получить скриншот дисплея
+      description: |
+        Возвращает PNG-изображение скриншота указанного дисплея.
+        
+        Номер дисплея начинается с 0 (0 — основной монитор, 1 — второй и т.д.).
+        
+        Если параметр `d` не указан или некорректен — возвращается ошибка 400.
+      parameters:
+        - name: d
+          in: query
+          description: Номер дисплея (0, 1, 2…)
+          required: true
+          schema:
+            type: integer
+            minimum: 0
+            example: 0
+      responses:
+        '200':
+          description: Успешно — PNG-изображение скриншота
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Неверный или отсутствующий параметр `d`
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Invalid display number
+        '401':
+          description: Не пройдена Basic Authentication (если включена)
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Unauthorized
+          headers:
+            WWW-Authenticate:
+              schema:
+                type: string
+              example: Basic realm="Restricted Area", charset="UTF-8"
+        '500':
+          description: Ошибка при захвате экрана (например, дисплей недоступен)
+          content:
+            text/plain:
+              schema:
+                type: string
+              example: Failed to capture screenshot
+
+security:
+  - basicAuth: []
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+      description: |
+        Опциональная Basic Authentication.
+        Включается флагом `--auth-enable`.
+        Если включена — все запросы требуют авторизации.
+
+  responses:
+    UnauthorizedError:
+      description: Авторизация не пройдена
+      content:
+        text/plain:
+          schema:
+            type: string
+          example: Unauthorized
+    BadRequestError:
+      description: Неверные параметры запроса
+      content:
+        text/plain:
+          schema:
+            type: string
+          example: Invalid display number
