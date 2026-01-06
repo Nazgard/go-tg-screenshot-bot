@@ -1,6 +1,8 @@
 [![Go](https://img.shields.io/badge/go-%2300ADD8.svg?style=for-the-badge&logo=go&logoColor=white)](https://golang.org)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
 [![GitHub last commit](https://img.shields.io/github/last-commit/nazgard/go-tg-screenshot-bot?style=for-the-badge)](https://github.com/nazgard/go-tg-screenshot-bot)
+[![Tests](https://github.com/nazgard/go-tg-screenshot-bot/actions/workflows/go-test.yml/badge.svg)](https://github.com/nazgard/go-tg-screenshot-bot/actions/workflows/go-test.yml)
+[![Codecov](https://codecov.io/gh/nazgard/go-tg-screenshot-bot/graph/badge.svg)](https://codecov.io/gh/nazgard/go-tg-screenshot-bot)
 
 # 🖥️ Screenshot Bot
 
